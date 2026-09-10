@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"name": "Y-Bot",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"debug.enableStatusBarColor": false
+	}
+}
