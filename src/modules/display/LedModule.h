@@ -32,7 +32,7 @@ public:
     // From event bus
     static void onEvent(const Event &e)
     {
-        if (e.type == EventType::PAT_DETECTED)
+        if (e.type == EventType::PRESS_DETECTED)
         {
             toggle();
         }

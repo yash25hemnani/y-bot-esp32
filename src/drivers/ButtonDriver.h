@@ -13,7 +13,7 @@ class ButtonDriver {
             
             if (now - lastPress > 200) {
                 lastPress = now;
-                eventBus->publishFromISR(EventType::PAT_DETECTED);
+                eventBus->publishFromISR(EventType::PRESS_DETECTED);
             }
 
         }

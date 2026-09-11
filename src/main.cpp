@@ -2,13 +2,17 @@
 #include "config/Pins.h"
 #include "app/EventBus.h"
 #include "drivers/ButtonDriver.h"
+#include "drivers/TouchSensorDriver.h"
 #include "modules/display/LedModule.h"
+#include "modules/touch/TouchSensorModule.h"
 #include "app/CommandRouter.h"
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
 
-const char *WIFI_SSID = "Nokia 5.4";
-const char *WIFI_PASSWORD = "alohmoraa";
+const char *WIFI_SSID = "Galaxy A03s0634";
+const char *WIFI_PASSWORD = "bbbbbbbbb";
+// const char *WIFI_SSID = "Nokia 5.4";
+// const char *WIFI_PASSWORD = "alohmoraa";
 
 EventBus eventBus;
 CommandRouter commandRouter;
@@ -22,11 +26,14 @@ void setup()
   Serial.println("Booting...");
 
   LedModule::init(LED_PIN);
+  TouchSensorModule::init(&eventBus);
 
   // pipeline 1: sensor -> EventBus -> LedModule
   eventBus.subscribe(LedModule::onEvent);
+  eventBus.subscribe(TouchSensorModule::onEvent);
   eventBus.init();
   ButtonDriver::init(BOOT_PIN, &eventBus);
+  TouchSensorDriver::init(TOUCH_PIN, &eventBus);
 
   // pipeline 2: WiFi -> CommandRouter -> LedModule
   commandRouter.init();

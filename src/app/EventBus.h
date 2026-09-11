@@ -4,12 +4,16 @@
 
 // Defining system events
 enum class EventType {
+    PRESS_DETECTED,
     PAT_DETECTED,
+    PAT_STREAK_4,
+    PAT_STREAK_6,
 };
 
 // Define strucutre of an event
 struct Event {
     EventType type;
+    uint8_t pin = 0; // originating pin, when applicable
 };
 
 // Function type defination
@@ -46,16 +50,16 @@ class EventBus {
             subscribers.push_back(handler);
         }
 
-        void publishFromISR(EventType type) {
-            Event e{type};
+        void publishFromISR(EventType type, uint8_t pin = 0) {
+            Event e{type, pin};
             BaseType_t woken = pdFALSE;
             xQueueSendFromISR(eventQueue, &e, &woken);
 
             if (woken) portYIELD_FROM_ISR();
         }
 
-        void publish(EventType type) {
-            Event e{type};
+        void publish(EventType type, uint8_t pin = 0) {
+            Event e{type, pin};
             xQueueSend(eventQueue, &e, pdMS_TO_TICKS(10));
         }
 };

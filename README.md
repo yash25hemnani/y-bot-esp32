@@ -25,7 +25,7 @@ sequenceDiagram
     participant Led as LedModule
 
     Btn->>ISR: FALLING interrupt
-    ISR->>Bus: publishFromISR(PAT_DETECTED)
+    ISR->>Bus: publishFromISR(PRESS_DETECTED)
     Bus->>Led: onEvent(event)
     Led->>Led: toggle()
 ```
