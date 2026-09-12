@@ -5,6 +5,7 @@
 #include "drivers/TouchSensorDriver.h"
 #include "modules/display/LedModule.h"
 #include "modules/touch/TouchSensorModule.h"
+#include "modules/settings/SettingsModule.h"
 #include "app/CommandRouter.h"
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
@@ -38,6 +39,7 @@ void setup()
   // pipeline 2: WiFi -> CommandRouter -> LedModule
   commandRouter.init();
   commandRouter.registerHandler("led", LedModule::onCommand);
+  commandRouter.registerHandler("settings", SettingsModule::onCommand);
   wifiManager.init(WIFI_SSID, WIFI_PASSWORD, &commandRouter);
   bleManager.init("Y-Bot", &commandRouter);
 

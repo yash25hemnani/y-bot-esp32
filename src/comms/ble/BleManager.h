@@ -6,6 +6,7 @@
 #include <BLE2902.h>
 #include "app/CommandRouter.h"
 #include "comms/protocol/Commands.h"
+#include "utils/utils.h"
 
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_UUID "12345678-1234-1234-1234-1234567890cd"
@@ -18,24 +19,31 @@ private:
 
     void handleWrite(const String &value)
     {
-        // Expected format "module:action"
-        int sep = value.indexOf(':');
+        // Expected format "module:action" or "module:action:key:value"
+        std::vector<String> splits = split(':', value);
 
-        if (sep < 0)
+        if (splits.size() < 2 || splits.size() == 3 || splits.size() > 4)
         {
-            Serial.println("Bad BLE command format, expected module:action");
+            Serial.println("Invalid Command!");
             return;
         }
 
         Command cmd{};
-        String moduleStr = value.substring(0, sep);
-        String actionStr = value.substring(sep + 1);
 
-        strncpy(cmd.module, moduleStr.c_str(), sizeof(cmd.module));
-        strncpy(cmd.action, actionStr.c_str(), sizeof(cmd.action));
+        String moduleStr = splits[0];
+        String actionStr = splits[1];
+        String keyStr = splits.size() > 2 ? splits[2] : "";
+        String valueStr = splits.size() > 3 ? splits[3] : "";
+
+        // strncpy does not null-terminate when the source is >= the buffer size,
+        // and key/value now carry untrusted BLE input that gets passed to Preferences.
+        strncpy(cmd.module, moduleStr.c_str(), sizeof(cmd.module) - 1);
+        strncpy(cmd.action, actionStr.c_str(), sizeof(cmd.action) - 1);
+        strncpy(cmd.key, keyStr.c_str(), sizeof(cmd.key) - 1);
+        strncpy(cmd.value, valueStr.c_str(), sizeof(cmd.value) - 1);
 
         commandRouter->submit(cmd); // Non blocking submit
-        Serial.println("BLE queued: " + moduleStr + "/" + actionStr);
+        Serial.println("BLE queued: " + moduleStr + "/" + actionStr + "/" + keyStr);
     }
 
     class WriteCallback : public BLECharacteristicCallbacks
