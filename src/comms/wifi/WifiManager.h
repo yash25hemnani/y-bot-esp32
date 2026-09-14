@@ -3,21 +3,31 @@
 #include <WebServer.h>
 #include "app/CommandRouter.h"
 #include "comms/protocol/Commands.h"
+#include "modules/settings/SettingsModule.h"
 
 class WifiManager
 {
 private:
     WebServer server{80};
     CommandRouter *commandRouter;
+    String ssid;
+    String password;
+    bool credentialsAvailable = false;
+    unsigned long lastConnectAttempt = 0;
+    static const unsigned long RECONNECT_INTERVAL_MS = 5000;
 
     void handleCommand()
     {
-        Command cmd{};
         String moduleArg = server.arg("module");
         String actionArg = server.arg("action");
+        String keyArg = server.arg("key");
+        String valueArg = server.arg("value");
 
-        strncpy(cmd.module, moduleArg.c_str(), sizeof(cmd.module));
-        strncpy(cmd.action, actionArg.c_str(), sizeof(cmd.action));
+        Command cmd{};
+        strncpy(cmd.module, moduleArg.c_str(), sizeof(cmd.module) - 1);
+        strncpy(cmd.action, actionArg.c_str(), sizeof(cmd.action) - 1);
+        strncpy(cmd.key, keyArg.c_str(), sizeof(cmd.key) - 1);
+        strncpy(cmd.value, valueArg.c_str(), sizeof(cmd.value) - 1);
 
         commandRouter->submit(cmd);
 
@@ -28,6 +38,17 @@ private:
     {
         for (;;)
         {
+            if (credentialsAvailable && WiFi.status() != WL_CONNECTED)
+            {
+                unsigned long now = millis();
+                if (now - lastConnectAttempt >= RECONNECT_INTERVAL_MS)
+                {
+                    lastConnectAttempt = now;
+                    Serial.println("WiFi not connected, retrying...");
+                    WiFi.begin(ssid.c_str(), password.c_str());
+                }
+            }
+
             server.handleClient();
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -39,26 +60,32 @@ private:
     }
 
 public:
-    void init(const char *ssid, const char *password, CommandRouter *router)
+    void init(CommandRouter *router)
     {
         commandRouter = router;
-        WiFi.begin(ssid, password);
-        Serial.print("Connecting to WiFi");
+        credentialsAvailable = SettingsModule::wifiCredentialAvailable();
 
-        while (WiFi.status() != WL_CONNECTED)
+        WiFi.mode(WIFI_STA);
+
+        if (!credentialsAvailable)
         {
-            delay(300);
-            Serial.print(".");
+            Serial.println("No wifi credentials available.");
         }
-        Serial.println();
-        Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
+        else
+        {
+            ssid = SettingsModule::loadKey("wifi_name");
+            password = SettingsModule::loadKey("wifi_password");
 
-        server.on("/cmd", HTTP_GET, [this]()
+            WiFi.begin(ssid.c_str(), password.c_str());
+            lastConnectAttempt = millis();
+            Serial.println("Connecting to WiFi in background...");
+        }
+
+        server.on("/cmd", HTTP_POST, [this]()
                   { handleCommand(); });
         server.begin();
 
-        // WifiManager gets its onw task so server.handleClient() never blocks anything else
+        // WifiManager gets its own task so connecting/reconnecting never blocks setup() or anything else
         xTaskCreatePinnedToCore(taskTrampoline, "wifi_mgr", 4096, this, 4, nullptr, 0);
     }
 };

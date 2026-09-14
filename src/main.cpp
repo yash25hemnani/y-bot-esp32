@@ -10,10 +10,6 @@
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
 
-const char *WIFI_SSID = "Galaxy A03s0634";
-const char *WIFI_PASSWORD = "bbbbbbbbb";
-// const char *WIFI_SSID = "Nokia 5.4";
-// const char *WIFI_PASSWORD = "alohmoraa";
 
 EventBus eventBus;
 CommandRouter commandRouter;
@@ -40,8 +36,9 @@ void setup()
   commandRouter.init();
   commandRouter.registerHandler("led", LedModule::onCommand);
   commandRouter.registerHandler("settings", SettingsModule::onCommand);
-  wifiManager.init(WIFI_SSID, WIFI_PASSWORD, &commandRouter);
+  wifiManager.init(&commandRouter);
   bleManager.init("Y-Bot", &commandRouter);
+  SettingsModule::init(&bleManager);
 
   Serial.println("Ready. Press BOOT or send /cmd?module=led&action=toggle");
 }

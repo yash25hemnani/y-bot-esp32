@@ -9,20 +9,39 @@
 #include "utils/utils.h"
 
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
-#define CHARACTERISTIC_UUID "12345678-1234-1234-1234-1234567890cd"
+#define CHARACTERISTIC_UUID_RX "12345678-1234-1234-1234-1234567890cd" // client -> device (write)
+#define CHARACTERISTIC_UUID_TX "12345678-1234-1234-1234-1234567890ce" // device -> client (notify)
 
 class BleManager
 {
 private:
-    BLECharacteristic *characteristic;
+    BLECharacteristic *rxCharacteristic;
+    BLECharacteristic *txCharacteristic;
     CommandRouter *commandRouter;
+
+    bool clientConnected = false;
+
+    class ServerCallback : public BLEServerCallbacks
+    {
+    private:
+        BleManager *manager;
+
+    public:
+        ServerCallback(BleManager *mgr) : manager(mgr) {}
+        void onConnect(BLEServer *server) override { manager->clientConnected = true; }
+        void onDisconnect(BLEServer *server) override
+        {
+            manager->clientConnected = false;
+            server->getAdvertising()->start(); // resume advertising after disconnect
+        }
+    };
 
     void handleWrite(const String &value)
     {
-        // Expected format "module:action" or "module:action:key:value"
+        // Expected format "module:action", "module:action:key" (e.g. reads), or "module:action:key:value"
         std::vector<String> splits = split(':', value);
 
-        if (splits.size() < 2 || splits.size() == 3 || splits.size() > 4)
+        if (splits.size() < 2 || splits.size() > 4)
         {
             Serial.println("Invalid Command!");
             return;
@@ -68,13 +87,16 @@ public:
 
         BLEDevice::init(deviceName);
         BLEServer *server = BLEDevice::createServer();
+        server->setCallbacks(new ServerCallback(this));
         BLEService *service = server->createService(SERVICE_UUID);
 
-        characteristic = service->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+        rxCharacteristic = service->createCharacteristic(
+            CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+        rxCharacteristic->setCallbacks(new WriteCallback(this));
 
-        characteristic->setCallbacks(new WriteCallback(this));
-
-        characteristic->addDescriptor(new BLE2902());
+        txCharacteristic = service->createCharacteristic(
+            CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
+        txCharacteristic->addDescriptor(new BLE2902()); // required for notify subscriptions
 
         service->start();
 
@@ -83,5 +105,13 @@ public:
         advertising->start();
 
         Serial.println("BLE advertising started, waiting for writes...");
+    }
+
+    void sendResponse(const String &payload)
+    {
+        if (!clientConnected || txCharacteristic == nullptr)
+            return;
+        txCharacteristic->setValue(payload.c_str());
+        txCharacteristic->notify();
     }
 };
