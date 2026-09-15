@@ -4,6 +4,7 @@
 #include "drivers/ButtonDriver.h"
 #include "drivers/TouchSensorDriver.h"
 #include "modules/display/LedModule.h"
+#include "modules/display/DisplayModule.h"
 #include "modules/touch/TouchSensorModule.h"
 #include "modules/settings/SettingsModule.h"
 #include "app/CommandRouter.h"
@@ -23,6 +24,9 @@ void setup()
   Serial.println("Booting...");
 
   LedModule::init(LED_PIN);
+
+  Wire.begin(SDA_PIN, SCK_PIN);
+  DisplayModule::init();
   TouchSensorModule::init(&eventBus);
 
   // pipeline 1: sensor -> EventBus -> LedModule
