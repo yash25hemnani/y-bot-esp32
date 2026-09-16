@@ -11,7 +11,6 @@
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
 
-
 EventBus eventBus;
 CommandRouter commandRouter;
 WifiManager wifiManager;
@@ -32,6 +31,7 @@ void setup()
   // pipeline 1: sensor -> EventBus -> LedModule
   eventBus.subscribe(LedModule::onEvent);
   eventBus.subscribe(TouchSensorModule::onEvent);
+  eventBus.subscribe(DisplayModule::onEvent);
   eventBus.init();
   ButtonDriver::init(BOOT_PIN, &eventBus);
   TouchSensorDriver::init(TOUCH_PIN, &eventBus);

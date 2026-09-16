@@ -26,6 +26,34 @@ class DisplayDriver
 private:
     static inline Adafruit_SSD1306 display{SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET};
 
+    static inline uint32_t lastBlinkAt = 0;
+    static inline int8_t blinkHeight = -1; // -1 = not currently blinking
+    static inline int8_t blinkDir = -1;
+
+    static inline uint8_t bootEyeHeight = 0;
+    static inline bool bootDone = false;
+
+    static inline bool reactDone = false;
+    static inline uint32_t reactStartedAt = 0;
+
+    static inline uint8_t menuIndex = 0;
+
+    static inline char msgText[48] = {0};
+    static inline uint8_t *imgBuf = nullptr;
+    static inline uint16_t imgW = 0, imgH = 0;
+
+    static void drawEyes(int height)
+    {
+        display.clearDisplay();
+
+        int y = eyeY + (EYE_HEIGHT - height) / 2; // keep eyes vertically centered as they shrink
+
+        display.fillRoundRect(leftEyeX, y, EYE_WIDTH, height, EYE_RADIUS, SSD1306_WHITE);
+        display.fillRoundRect(rightEyeX, y, EYE_WIDTH, height, EYE_RADIUS, SSD1306_WHITE);
+
+        display.display();
+    }
+
 public:
     static void init()
     {
@@ -40,41 +68,125 @@ public:
         display.display();
     }
 
-    static void print(const char *text)
+    static void startBootAnimation()
+    {
+        bootEyeHeight = 0;
+        bootDone = false;
+    }
+
+    static void tickBootAnimation(uint32_t startedAt)
+    {
+        uint32_t elapsed = millis() - startedAt;
+        bootEyeHeight = constrain((elapsed * EYE_HEIGHT) / 600, 0, EYE_HEIGHT);
+        drawEyes(bootEyeHeight);
+        if (bootEyeHeight >= EYE_HEIGHT)
+            bootDone = true;
+    }
+
+    static bool bootAnimationDone() { return bootDone; }
+
+    static void tickIdleEyes()
+    {
+        uint32_t now = millis();
+
+        if (blinkHeight < 0)
+        {
+            drawEyes(EYE_HEIGHT);
+            if (now - lastBlinkAt > 2000) // blink every ~2s
+            {
+                blinkHeight = EYE_HEIGHT;
+                blinkDir = -1;
+                lastBlinkAt = now;
+            }
+            return;
+        }
+
+        blinkHeight += blinkDir * 4;
+        if (blinkHeight <= 2)
+        {
+            blinkDir = 1; // hit bottom, start reopening
+        }
+        else if (blinkHeight >= EYE_HEIGHT)
+        {
+            blinkHeight = -1; // blink finished
+            return;
+        }
+        drawEyes(blinkHeight);
+    }
+
+    static void tickReactionAnimation()
+    {
+        if (reactStartedAt == 0)
+        {
+            reactStartedAt = millis();
+        }
+
+        drawEyes(EYE_HEIGHT);
+
+        if (millis() - reactStartedAt > 1200)
+        {
+            reactDone = true;
+            reactStartedAt = 0;
+        }
+    }
+
+    static bool reactionAnimationDone()
+    {
+        bool d = reactDone;
+        if (d)
+            reactDone = false;
+        return d;
+    }
+
+    // --- Menu ---
+    static void tickMenu()
     {
         display.clearDisplay();
         display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
         display.setCursor(0, 0);
-        display.println(text);
+        display.println("MENU");
+        display.println(menuIndex == 0 ? "> Settings" : "  Settings");
+        display.println(menuIndex == 1 ? "> Info" : "  Info");
         display.display();
     }
 
-    static void drawEyes(int height)
+    // --- Content: text message or image ---
+    static void setMessage(const char *text)
+    {
+        strncpy(msgText, text, sizeof(msgText) - 1);
+        msgText[sizeof(msgText) - 1] = '\0';
+        if (imgBuf)
+        {
+            free(imgBuf);
+            imgBuf = nullptr;
+        }
+    }
+
+    static void setImage(uint8_t *buf, uint16_t w, uint16_t h)
+    {
+        if (imgBuf)
+            free(imgBuf);
+        imgBuf = buf;
+        imgW = w;
+        imgH = h;
+        msgText[0] = '\0';
+    }
+
+    static void tickContent()
     {
         display.clearDisplay();
-
-        int y = eyeY + (EYE_HEIGHT - height) / 2; // keep eyes vertically centered as they shrink
-
-        display.fillRoundRect(leftEyeX, y, EYE_WIDTH, height, EYE_RADIUS, SSD1306_WHITE);
-        display.fillRoundRect(rightEyeX, y, EYE_WIDTH, height, EYE_RADIUS, SSD1306_WHITE);
-
+        if (imgBuf)
+        {
+            display.drawBitmap(0, 0, imgBuf, imgW, imgH, SSD1306_WHITE);
+        }
+        else
+        {
+            display.setTextSize(1);
+            display.setTextColor(SSD1306_WHITE);
+            display.setCursor(0, 0);
+            display.println(msgText);
+        }
         display.display();
-    }
-
-    static void blink()
-    {
-        // Close
-        for (int h = EYE_HEIGHT; h >= 2; h -= 4)
-        {
-            drawEyes(h);
-            delay(15);
-        }
-        // Open
-        for (int h = 2; h <= EYE_HEIGHT; h += 4)
-        {
-            drawEyes(h);
-            delay(15);
-        }
     }
 };
