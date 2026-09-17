@@ -6,8 +6,11 @@
 enum class EventType {
     PRESS_DETECTED,
     PAT_DETECTED,
-    PAT_STREAK_4,
     PAT_STREAK_6,
+    MENU_PRESSED,
+    MENU_LONG_PRESSED,
+    UP_PRESSED,
+    DOWN_PRESSED
 };
 
 // Define strucutre of an event

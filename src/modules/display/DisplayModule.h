@@ -24,8 +24,36 @@ private:
         switch (in.type)
         {
             // If on menu, go to idle. If not on menu -> go to menu
-        case IntentType::BUTTON_PRESS:
+        case IntentType::MENU_PRESS:
             enterState(state == DisplayState::MENU ? DisplayState::IDLE : DisplayState::MENU);
+            break;
+
+        case IntentType::MENU_UP:
+            if (state == DisplayState::MENU)
+                DisplayDriver::updateMenuIndex(true);
+            break;
+
+        case IntentType::MENU_DOWN:
+            if (state == DisplayState::MENU)
+                DisplayDriver::updateMenuIndex(false);
+            break;
+
+        case IntentType::MENU_SELECTED:
+            if (state == DisplayState::MENU)
+            {
+                uint8_t selectedIndex = DisplayDriver::selectMenuIndex();
+                switch (selectedIndex)
+                {
+                case DisplayDriver::MENU_ITEM_SETTINGS:
+                    enterState(DisplayState::SETTINGS);
+                    break;
+
+                case DisplayDriver::MENU_ITEM_INFO:
+                    enterState(DisplayState::INFO);
+                    break;
+                }
+            }
+
             break;
 
         case IntentType::PAT_REACTION:
@@ -78,6 +106,18 @@ private:
             DisplayDriver::tickMenu();
             break;
 
+        case DisplayState::SETTINGS:
+            DisplayDriver::tickSettings();
+            if (millis() - stateEnteredAt > 15000)
+                enterState(DisplayState::MENU); // auto-timeout
+            break;
+
+        case DisplayState::INFO:
+            DisplayDriver::tickInfo();
+            if (millis() - stateEnteredAt > 15000)
+                enterState(DisplayState::MENU); // auto-timeout
+            break;
+
         case DisplayState::CONTENT:
             DisplayDriver::tickContent();
             if (millis() - stateEnteredAt > 5000)
@@ -114,13 +154,25 @@ public:
     static void onEvent(const Event &e)
     {
         DisplayIntent in{};
-        if (e.type == EventType::PRESS_DETECTED)
+        if (e.type == EventType::MENU_PRESSED)
         {
-            in.type = IntentType::BUTTON_PRESS;
+            in.type = IntentType::MENU_PRESS;
         }
-        else if (e.type == EventType::PAT_STREAK_4 || e.type == EventType::PAT_STREAK_6)
+        else if (e.type == EventType::PAT_STREAK_6)
         {
             in.type = IntentType::PAT_REACTION;
+        }
+        else if (e.type == EventType::UP_PRESSED)
+        {
+            in.type = IntentType::MENU_UP;
+        }
+        else if (e.type == EventType::DOWN_PRESSED)
+        {
+            in.type = IntentType::MENU_DOWN;
+        }
+        else if (e.type == EventType::MENU_LONG_PRESSED)
+        {
+            in.type = IntentType::MENU_SELECTED;
         }
         else
         {

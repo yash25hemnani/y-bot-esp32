@@ -7,11 +7,16 @@ enum class DisplayState
     IDLE,
     REACTION,
     MENU,
-    CONTENT
+    CONTENT,
+    SETTINGS,
+    INFO,
 };
 
 enum class IntentType {
-    BUTTON_PRESS,
+    MENU_PRESS,
+    MENU_UP,
+    MENU_DOWN,
+    MENU_SELECTED,
     PAT_REACTION,
     SHOW_MESSAGE,
     SHOW_IMAGE,

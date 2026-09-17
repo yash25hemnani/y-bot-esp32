@@ -25,10 +25,7 @@ class TouchSensorModule {
             patCount = (now - lastPat < STREAK_WINDOW_MS) ? patCount + 1 : 1;
             lastPat = now;
 
-            if (patCount == 4) { 
-                Serial.println("Patted 4 times.");
-                eventBus->publish(EventType::PAT_STREAK_4);
-            } else if (patCount == 6) {
+            if (patCount == 6) {
                 Serial.println("Patted 6 times.");
                 eventBus->publish(EventType::PAT_STREAK_6);
                 patCount = 0; // streak complete, start fresh

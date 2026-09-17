@@ -2,27 +2,52 @@
 #include <Arduino.h>
 #include <app/EventBus.h>
 
-class ButtonDriver {
-    private:
-        static inline volatile uint32_t lastPress = 0;
-        static inline EventBus* eventBus;
-        static inline uint8_t buttonPin;
+#define LONG_PRESS_MS 1000
 
-        static void IRAM_ATTR isr() {
-            uint32_t now = millis();
-            
-            if (now - lastPress > 200) {
+class ButtonDriver
+{
+private:
+    volatile uint32_t lastPress = 0;
+    EventBus *eventBus;
+    uint8_t buttonPin;
+    EventType eventType;
+    EventType longEventType;
+    bool longPressAvailable;
+    volatile uint32_t pressStart = 0;
+
+    void IRAM_ATTR handleInterrupt()
+    {
+        uint32_t now = millis();
+        if (digitalRead(buttonPin) == LOW) // pressed
+        {
+            if (now - lastPress > 200) // debounce
+            {
+                pressStart = now;
                 lastPress = now;
-                eventBus->publishFromISR(EventType::PRESS_DETECTED);
             }
-
         }
-
-    public:
-        static void init(uint8_t pin, EventBus *bus) {
-            buttonPin = pin;
-            eventBus = bus;
-            pinMode(buttonPin, INPUT_PULLUP); // HIGH = No Button Press
-            attachInterrupt(digitalPinToInterrupt(buttonPin), isr, FALLING);
+        else // released
+        {
+            uint32_t heldFor = now - pressStart;
+            bool isLongPress = longPressAvailable && heldFor > LONG_PRESS_MS;
+            eventBus->publishFromISR(isLongPress ? longEventType : eventType, buttonPin);
         }
+    }
+
+    static void IRAM_ATTR isrTrampoline(void *arg)
+    {
+        static_cast<ButtonDriver *>(arg)->handleInterrupt();
+    }
+
+public:
+    void init(uint8_t pin, EventBus *bus, EventType type, bool hasLongPress, EventType longType = EventType::PRESS_DETECTED)
+    {
+        buttonPin = pin;
+        eventBus = bus;
+        eventType = type;
+        longPressAvailable = hasLongPress;
+        longEventType = longType;
+        pinMode(buttonPin, INPUT_PULLUP);
+        attachInterruptArg(digitalPinToInterrupt(buttonPin), isrTrampoline, this, CHANGE);
+    }
 };

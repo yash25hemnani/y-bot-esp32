@@ -15,6 +15,9 @@ EventBus eventBus;
 CommandRouter commandRouter;
 WifiManager wifiManager;
 BleManager bleManager;
+ButtonDriver menuButton;
+ButtonDriver upButton;
+ButtonDriver downButton;
 
 void setup()
 {
@@ -33,7 +36,10 @@ void setup()
   eventBus.subscribe(TouchSensorModule::onEvent);
   eventBus.subscribe(DisplayModule::onEvent);
   eventBus.init();
-  ButtonDriver::init(BOOT_PIN, &eventBus);
+  
+  menuButton.init(MENU_BUTTON_PIN, &eventBus, EventType::MENU_PRESSED, true, EventType::MENU_LONG_PRESSED);
+  upButton.init(UP_BUTTON_PIN, &eventBus, EventType::UP_PRESSED, false);
+  downButton.init(DOWN_BUTTON_PIN, &eventBus, EventType::DOWN_PRESSED, false);
   TouchSensorDriver::init(TOUCH_PIN, &eventBus);
 
   // pipeline 2: WiFi -> CommandRouter -> LedModule

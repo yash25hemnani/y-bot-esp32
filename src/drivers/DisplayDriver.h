@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <pgmspace.h>
+#include <vector>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -35,8 +36,11 @@ private:
 
     static inline bool reactDone = false;
     static inline uint32_t reactStartedAt = 0;
+    static inline int reactSize = 0;
 
+    static inline std::vector<String> menuItems = {"Settings", "Info"};
     static inline uint8_t menuIndex = 0;
+    static inline uint8_t selectedIndex = 0;
 
     static inline char msgText[48] = {0};
     static inline uint8_t *imgBuf = nullptr;
@@ -55,6 +59,10 @@ private:
     }
 
 public:
+    // indices into menuItems — keep in sync with the list above
+    static constexpr uint8_t MENU_ITEM_SETTINGS = 0;
+    static constexpr uint8_t MENU_ITEM_INFO = 1;
+
     static void init()
     {
         if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
@@ -119,11 +127,34 @@ public:
         if (reactStartedAt == 0)
         {
             reactStartedAt = millis();
+            reactSize = EYE_HEIGHT;
         }
 
-        drawEyes(EYE_HEIGHT);
+        // grow the two eyes outward each tick until they fill the screen
+        reactSize = min(reactSize + 4, 100);
 
-        if (millis() - reactStartedAt > 1200)
+        int w = map(reactSize, 0, 100, EYE_WIDTH, SCREEN_WIDTH / 2);
+        int h = map(reactSize, 0, 100, EYE_HEIGHT, SCREEN_HEIGHT);
+        int gap = map(reactSize, 0, 100, EYE_GAP, 0);
+        int y = (SCREEN_HEIGHT - h) / 2;
+
+        int leftX = SCREEN_WIDTH / 2 - gap / 2 - w;
+        int rightX = SCREEN_WIDTH / 2 + gap / 2;
+
+        display.clearDisplay();
+        if (reactSize >= 100)
+        {
+            display.fillRect(leftX, y, w, h, SSD1306_WHITE);
+            display.fillRect(rightX, y, w, h, SSD1306_WHITE);
+        }
+        else
+        {
+            display.fillRoundRect(leftX, y, w, h, EYE_RADIUS, SSD1306_WHITE);
+            display.fillRoundRect(rightX, y, w, h, EYE_RADIUS, SSD1306_WHITE);
+        }
+        display.display();
+
+        if (reactSize >= 100 && millis() - reactStartedAt > 1200)
         {
             reactDone = true;
             reactStartedAt = 0;
@@ -146,9 +177,58 @@ public:
         display.setTextColor(SSD1306_WHITE);
         display.setCursor(0, 0);
         display.println("MENU");
-        display.println(menuIndex == 0 ? "> Settings" : "  Settings");
-        display.println(menuIndex == 1 ? "> Info" : "  Info");
+        for (uint8_t i = 0; i < menuItems.size(); i++)
+        {
+            display.print(menuIndex == i ? "> " : "  ");
+            display.println(menuItems[i]);
+        }
+
         display.display();
+    }
+
+    static void tickSettings()
+    {
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0, 0);
+        display.println("SETTINGS");
+        display.println();
+        display.println("Wifi, BLE name,");
+        display.println("and pairing info");
+        display.println("go here.");
+        display.display();
+    }
+
+    static void tickInfo()
+    {
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0, 0);
+        display.println("INFO");
+        display.println();
+        display.println("Firmware version,");
+        display.println("uptime, etc.");
+        display.display();
+    }
+
+    static void updateMenuIndex(bool up)
+    {
+        if (up && menuIndex > 0)
+        {
+            menuIndex--;
+        }
+        else if (!up && menuIndex < menuItems.size() - 1)
+        {
+            menuIndex++;
+        }
+    }
+
+    static uint8_t selectMenuIndex()
+    {
+        selectedIndex = menuIndex;
+        return selectedIndex;
     }
 
     // --- Content: text message or image ---
