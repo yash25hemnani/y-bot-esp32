@@ -7,6 +7,7 @@
 #include "modules/display/DisplayModule.h"
 #include "modules/touch/TouchSensorModule.h"
 #include "modules/settings/SettingsModule.h"
+#include "modules/motor/MotorModule.h"
 #include "app/CommandRouter.h"
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
@@ -26,6 +27,7 @@ void setup()
   Serial.println("Booting...");
 
   LedModule::init(LED_PIN);
+  MotorModule::init();
 
   Wire.begin(SDA_PIN, SCK_PIN);
   DisplayModule::init();
@@ -46,6 +48,7 @@ void setup()
   commandRouter.init();
   commandRouter.registerHandler("led", LedModule::onCommand);
   commandRouter.registerHandler("settings", SettingsModule::onCommand);
+  commandRouter.registerHandler("motor", MotorModule::onCommand);
   wifiManager.init(&commandRouter);
   bleManager.init("Y-Bot", &commandRouter);
   SettingsModule::init(&bleManager);

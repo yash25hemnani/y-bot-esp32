@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <vector>
 
+
 // Defining system events
 enum class EventType {
     PRESS_DETECTED,
@@ -10,7 +11,7 @@ enum class EventType {
     MENU_PRESSED,
     MENU_LONG_PRESSED,
     UP_PRESSED,
-    DOWN_PRESSED
+    DOWN_PRESSED,
 };
 
 // Define strucutre of an event
