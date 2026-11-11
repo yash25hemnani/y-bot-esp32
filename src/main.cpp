@@ -12,11 +12,13 @@
 #include "app/CommandRouter.h"
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
+#include "comms/ws/WsClient.h"
 
 EventBus eventBus;
 CommandRouter commandRouter;
 WifiManager wifiManager;
 BleManager bleManager;
+WsClient wsClient;
 ButtonDriver menuButton;
 ButtonDriver upButton;
 ButtonDriver downButton;
@@ -52,7 +54,8 @@ void setup()
   commandRouter.registerHandler("motor", MotorModule::onCommand);
   commandRouter.registerHandler("wifi", WifiManager::onCommand);
   
-  wifiManager.init(&commandRouter);
+  wifiManager.init(&commandRouter, &bleManager);
+  wsClient.init(&commandRouter); // connects once WiFi is up
   bleManager.init("Y-Bot", &commandRouter);
   SettingsModule::init(&bleManager);
 

@@ -6,7 +6,7 @@
 #include <BLE2902.h>
 #include "app/CommandRouter.h"
 #include "comms/protocol/Commands.h"
-#include "utils/utils.h"
+#include "comms/protocol/CommandParser.h"
 
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_UUID_RX "12345678-1234-1234-1234-1234567890cd" // client -> device (write)
@@ -37,68 +37,18 @@ private:
         }
     };
 
-    // Copy src into dst only if it fits (including '\0'). Never truncates.
-    static bool copyField(char *dst, size_t dstSize, const String &src)
+    // Parsing lives in CommandParser (shared with the WebSocket). This only decides the BLE reply.
+    void handleWrite(const String &input)
     {
-        if (src.length() >= dstSize)
-            return false;
-        memcpy(dst, src.c_str(), src.length() + 1); // +1 copies the '\0'
-        return true;
-    }
-
-    // Formats: "module:action", "module:action:key", "module:action:key:value"
-    // Everything after the 3rd colon is the value, colons included.
-    void handleWrite(String input) // by value: we modify our own copy
-    {
-        // 1. Strip trailing CR/LF only. Spaces are kept (a password may use them).
-        while (input.endsWith("\r") || input.endsWith("\n"))
+        Command cmd;
+        ParseResult r = CommandParser::parse(input, cmd);
+        if (r != ParseResult::OK)
         {
-            input.remove(input.length() - 1);
-        }
-
-        // 2. Find at most 3 colons. Never search past the third
-        int c1 = input.indexOf(":");
-
-        if (c1 <= 0) // missing, or empty module
-        {
-            sendResponse("error:format");
+            sendResponse(CommandParser::errorText(r));
             return;
         }
 
-        int c2 = input.indexOf(":", c1 + 1);
-        int c3 = (c2 == -1) ? -1 : input.indexOf(':', c2 + 1);
-
-        // 3. Slice the fields
-        String moduleStr = input.substring(0, c1);
-        String actionStr = (c2 == -1) ? input.substring(c1 + 1) : input.substring(c1 + 1, c2);
-
-        String keyStr = "";
-        String valueStr = "";
-
-        if (c2 != -1)
-            keyStr = (c3 == -1) ? input.substring(c2 + 1)
-                                : input.substring(c2 + 1, c3);
-        if (c3 != -1)
-            valueStr = input.substring(c3 + 1);
-
-        if (actionStr.length() == 0)
-        {
-            sendResponse("error:format");
-            return;
-        }
-
-        // 4. Copy into the struct, rejecting anything too long
-        Command cmd{};
-        if (!copyField(cmd.module, sizeof(cmd.module), moduleStr) ||
-            !copyField(cmd.action, sizeof(cmd.action), actionStr) ||
-            !copyField(cmd.key, sizeof(cmd.key), keyStr) ||
-            !copyField(cmd.value, sizeof(cmd.value), valueStr))
-        {
-            sendResponse("error:too_long");
-            return;
-        }
-
-        // 5. Queue it and tell the client
+        cmd.source = CommandSource::BLE;
         if (!commandRouter->submit(cmd))
         {
             sendResponse("error:busy");
@@ -106,8 +56,7 @@ private:
         }
 
         sendResponse("ok:queued");
-
-        Serial.println("BLE queued: " + moduleStr + "/" + actionStr + "/" + keyStr); // never log value
+        Serial.printf("BLE queued: %s/%s/%s\n", cmd.module, cmd.action, cmd.key); // never log value
     }
 
     class WriteCallback : public BLECharacteristicCallbacks
