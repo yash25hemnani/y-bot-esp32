@@ -1,33 +1,31 @@
 #pragma once
 #include <Arduino.h>
 
-#define DIVIDER_RATIO 2
-#define SAMPLE_SIZE 16
-
 class BatteryDriver
 {
 private:
-    uint8_t buttonPin;
-    int batteryAvg = 0;
+    static constexpr int DIVIDER_RATIO = 2; // BAT -> 100k -> pin -> 100k -> GND
+    static constexpr int SAMPLE_COUNT = 16;
+
+    int pin = -1; // -1 = init() not called yet
 
 public:
-    void init(uint8_t pin)
+    void init(uint8_t adcPin)
     {
-        buttonPin = pin;
+        pin = adcPin;
+        analogSetPinAttenuation(pin, ADC_11db); // ~0-3.1 V; full cell (4.2 V) / 2 = 2.1 V
     }
 
+    // Battery voltage in mV, or -1 if init() wasn't called.
     int readMilliVolts()
     {
-        if (!buttonPin)
-            return;
+        if (pin < 0)
+            return -1;
 
-        for (int i = 0; i < SAMPLE_SIZE; i++)
-        {
-            batteryAvg += analogReadMilliVolts(buttonPin);
-        }
+        uint32_t sum = 0; // local, so it starts at 0 every call
+        for (int i = 0; i < SAMPLE_COUNT; i++)
+            sum += analogReadMilliVolts(pin);
 
-        batteryAvg /= SAMPLE_SIZE;
-
-        return batteryAvg * DIVIDER_RATIO;
+        return (sum / SAMPLE_COUNT) * DIVIDER_RATIO;
     }
 };

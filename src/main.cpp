@@ -4,6 +4,7 @@
 #include "drivers/ButtonDriver.h"
 #include "drivers/TouchSensorDriver.h"
 #include "modules/display/LedModule.h"
+#include "modules/battery/BatteryModule.h"
 #include "modules/display/DisplayModule.h"
 #include "modules/touch/TouchSensorModule.h"
 #include "modules/settings/SettingsModule.h"
@@ -38,7 +39,7 @@ void setup()
   eventBus.subscribe(TouchSensorModule::onEvent);
   eventBus.subscribe(DisplayModule::onEvent);
   eventBus.init();
-  
+
   menuButton.init(MENU_BUTTON_PIN, &eventBus, EventType::MENU_PRESSED, true, EventType::MENU_LONG_PRESSED);
   upButton.init(UP_BUTTON_PIN, &eventBus, EventType::UP_PRESSED, false);
   downButton.init(DOWN_BUTTON_PIN, &eventBus, EventType::DOWN_PRESSED, false);
@@ -49,9 +50,14 @@ void setup()
   commandRouter.registerHandler("led", LedModule::onCommand);
   commandRouter.registerHandler("settings", SettingsModule::onCommand);
   commandRouter.registerHandler("motor", MotorModule::onCommand);
+  commandRouter.registerHandler("wifi", WifiManager::onCommand);
+  
   wifiManager.init(&commandRouter);
   bleManager.init("Y-Bot", &commandRouter);
   SettingsModule::init(&bleManager);
+
+  commandRouter.registerHandler("battery", BatteryModule::onCommand);
+  BatteryModule::init(BATTERY_PIN, &eventBus, &bleManager);
 
   Serial.println("Ready. Press BOOT or send /cmd?module=led&action=toggle");
 }

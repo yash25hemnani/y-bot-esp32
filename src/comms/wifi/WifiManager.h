@@ -1,9 +1,19 @@
 #pragma once
 #include <WiFi.h>
 #include <WebServer.h>
+#include <atomic>
 #include "app/CommandRouter.h"
 #include "comms/protocol/Commands.h"
 #include "modules/settings/SettingsModule.h"
+
+enum class WifiState : uint8_t
+{
+    NO_CREDENTIALS,
+    CONNECTING,
+    CONNECTED,
+    WRONG_PASSWORD,
+    NO_NETWORK,
+};
 
 class WifiManager
 {
@@ -15,6 +25,35 @@ private:
     bool credentialsAvailable = false;
     unsigned long lastConnectAttempt = 0;
     static const unsigned long RECONNECT_INTERVAL_MS = 5000;
+    static inline std::atomic<bool> reloadRequested{false};
+    
+    BleManager *bleManager = nullptr;
+    static inline std::atomic<WifiState> state{WifiState::NO_CREDENTIALS};
+    static inline std::atomic<bool> statusPending{false}; // true = send status over BLE
+    static inline std::atomic<uint8_t> lastReason{0};     // last disconnect reason, for logs
+
+    void reloadCredentials()
+    {
+        WiFi.disconnect();
+
+        credentialsAvailable = SettingsModule::wifiCredentialAvailable();
+
+        if (!credentialsAvailable)
+        {
+            Serial.println("No wifi credentials available.");
+            return;
+        }
+
+        ssid = SettingsModule::loadKey("wifi_name");
+        password = SettingsModule::loadKey("wifi_password");
+
+        vTaskDelay(pdMS_TO_TICKS(100)); // let the disconnect settle
+        WiFi.begin(ssid.c_str(), password.c_str());
+        lastConnectAttempt = millis();
+
+        // SSID only - never the password.
+        Serial.printf("Connecting to WiFi: %s\n", ssid.c_str());
+    }
 
     void handleCommand()
     {
@@ -38,6 +77,11 @@ private:
     {
         for (;;)
         {
+            if (reloadRequested.exchange(false))
+            {
+                reloadCredentials();
+            }
+
             if (credentialsAvailable && WiFi.status() != WL_CONNECTED)
             {
                 unsigned long now = millis();
@@ -63,23 +107,9 @@ public:
     void init(CommandRouter *router)
     {
         commandRouter = router;
-        credentialsAvailable = SettingsModule::wifiCredentialAvailable();
 
-        WiFi.mode(WIFI_STA);
-
-        if (!credentialsAvailable)
-        {
-            Serial.println("No wifi credentials available.");
-        }
-        else
-        {
-            ssid = SettingsModule::loadKey("wifi_name");
-            password = SettingsModule::loadKey("wifi_password");
-
-            WiFi.begin(ssid.c_str(), password.c_str());
-            lastConnectAttempt = millis();
-            Serial.println("Connecting to WiFi in background...");
-        }
+        WiFi.mode(WIFI_STA); // must come before reloadCredentials()
+        reloadCredentials();
 
         server.on("/cmd", HTTP_POST, [this]()
                   { handleCommand(); });
@@ -87,5 +117,12 @@ public:
 
         // WifiManager gets its own task so connecting/reconnecting never blocks setup() or anything else
         xTaskCreatePinnedToCore(taskTrampoline, "wifi_mgr", 4096, this, 4, nullptr, 0);
+    }
+
+    // Runs on the cmd_router task (core 1). Only sets the flag; wifi_mgr (core 0) does the WiFi work.
+    static void onCommand(const Command &cmd)
+    {
+        if (strcmp(cmd.action, "reconnect") == 0)
+            reloadRequested = true;
     }
 };

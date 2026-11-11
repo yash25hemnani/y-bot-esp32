@@ -12,6 +12,7 @@ enum class EventType {
     MENU_LONG_PRESSED,
     UP_PRESSED,
     DOWN_PRESSED,
+    BATTERY_LOW
 };
 
 // Define strucutre of an event

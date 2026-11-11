@@ -15,3 +15,5 @@ Thumbs.db
 # Secrets / local overrides
 .env
 *.local.h
+docs/wiring-guide.md
+docs/roadmap.md

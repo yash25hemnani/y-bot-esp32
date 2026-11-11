@@ -20,6 +20,7 @@ private:
     CommandRouter *commandRouter;
 
     bool clientConnected = false;
+    SemaphoreHandle_t txMutex = nullptr;
 
     class ServerCallback : public BLEServerCallbacks
     {
@@ -36,33 +37,77 @@ private:
         }
     };
 
-    void handleWrite(const String &value)
+    // Copy src into dst only if it fits (including '\0'). Never truncates.
+    static bool copyField(char *dst, size_t dstSize, const String &src)
     {
-        // Expected format "module:action", "module:action:key" (e.g. reads), or "module:action:key:value"
-        std::vector<String> splits = split(':', value);
+        if (src.length() >= dstSize)
+            return false;
+        memcpy(dst, src.c_str(), src.length() + 1); // +1 copies the '\0'
+        return true;
+    }
 
-        if (splits.size() < 2 || splits.size() > 4)
+    // Formats: "module:action", "module:action:key", "module:action:key:value"
+    // Everything after the 3rd colon is the value, colons included.
+    void handleWrite(String input) // by value: we modify our own copy
+    {
+        // 1. Strip trailing CR/LF only. Spaces are kept (a password may use them).
+        while (input.endsWith("\r") || input.endsWith("\n"))
         {
-            Serial.println("Invalid Command!");
+            input.remove(input.length() - 1);
+        }
+
+        // 2. Find at most 3 colons. Never search past the third
+        int c1 = input.indexOf(":");
+
+        if (c1 <= 0) // missing, or empty module
+        {
+            sendResponse("error:format");
             return;
         }
 
+        int c2 = input.indexOf(":", c1 + 1);
+        int c3 = (c2 == -1) ? -1 : input.indexOf(':', c2 + 1);
+
+        // 3. Slice the fields
+        String moduleStr = input.substring(0, c1);
+        String actionStr = (c2 == -1) ? input.substring(c1 + 1) : input.substring(c1 + 1, c2);
+
+        String keyStr = "";
+        String valueStr = "";
+
+        if (c2 != -1)
+            keyStr = (c3 == -1) ? input.substring(c2 + 1)
+                                : input.substring(c2 + 1, c3);
+        if (c3 != -1)
+            valueStr = input.substring(c3 + 1);
+
+        if (actionStr.length() == 0)
+        {
+            sendResponse("error:format");
+            return;
+        }
+
+        // 4. Copy into the struct, rejecting anything too long
         Command cmd{};
+        if (!copyField(cmd.module, sizeof(cmd.module), moduleStr) ||
+            !copyField(cmd.action, sizeof(cmd.action), actionStr) ||
+            !copyField(cmd.key, sizeof(cmd.key), keyStr) ||
+            !copyField(cmd.value, sizeof(cmd.value), valueStr))
+        {
+            sendResponse("error:too_long");
+            return;
+        }
 
-        String moduleStr = splits[0];
-        String actionStr = splits[1];
-        String keyStr = splits.size() > 2 ? splits[2] : "";
-        String valueStr = splits.size() > 3 ? splits[3] : "";
+        // 5. Queue it and tell the client
+        if (!commandRouter->submit(cmd))
+        {
+            sendResponse("error:busy");
+            return;
+        }
 
-        // strncpy does not null-terminate when the source is >= the buffer size,
-        // and key/value now carry untrusted BLE input that gets passed to Preferences.
-        strncpy(cmd.module, moduleStr.c_str(), sizeof(cmd.module) - 1);
-        strncpy(cmd.action, actionStr.c_str(), sizeof(cmd.action) - 1);
-        strncpy(cmd.key, keyStr.c_str(), sizeof(cmd.key) - 1);
-        strncpy(cmd.value, valueStr.c_str(), sizeof(cmd.value) - 1);
+        sendResponse("ok:queued");
 
-        commandRouter->submit(cmd); // Non blocking submit
-        Serial.println("BLE queued: " + moduleStr + "/" + actionStr + "/" + keyStr);
+        Serial.println("BLE queued: " + moduleStr + "/" + actionStr + "/" + keyStr); // never log value
     }
 
     class WriteCallback : public BLECharacteristicCallbacks
@@ -83,6 +128,7 @@ private:
 public:
     void init(const char *deviceName, CommandRouter *router)
     {
+        txMutex = xSemaphoreCreateMutex();
         commandRouter = router;
 
         BLEDevice::init(deviceName);
@@ -107,11 +153,15 @@ public:
         Serial.println("BLE advertising started, waiting for writes...");
     }
 
+    // Safe to call from any task: the mutex keeps setValue + notify together.
     void sendResponse(const String &payload)
     {
-        if (!clientConnected || txCharacteristic == nullptr)
+        if (!clientConnected || txCharacteristic == nullptr || txMutex == nullptr)
             return;
+
+        xSemaphoreTake(txMutex, portMAX_DELAY);
         txCharacteristic->setValue(payload.c_str());
         txCharacteristic->notify();
+        xSemaphoreGive(txMutex);
     }
 };

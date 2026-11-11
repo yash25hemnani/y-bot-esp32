@@ -62,7 +62,7 @@ public:
     }
 
     // Called from WiFi/BLE Task
-    void submit(const Command& cmd) {
-        xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10));
+    bool submit(const Command& cmd) {
+        return xQueueSend(cmdQueue, &cmd, pdMS_TO_TICKS(10)) == pdTRUE;
     }
 };
