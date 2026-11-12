@@ -20,6 +20,12 @@ enum class WsState : uint8_t
     ONLINE,
 };
 
+// One outgoing message. Fixed-size so the queue can copy it by value (String would copy a heap pointer).
+struct OutMsg
+{
+    char text[128];
+};
+
 class WsClient
 {
 private:
@@ -37,10 +43,22 @@ private:
     static const unsigned long RECONNECT_MS = 5000;
     static const unsigned long AUTH_FAIL_RETRY_MS = 30000; // slow down if our keys are wrong
     static const size_t MAX_MESSAGE = 512;
+    static const size_t OUTBOX_DEPTH = 8;
+
+    // Replies from other tasks wait here; only the ws_client task sends them.
+    QueueHandle_t outbox = nullptr;
 
     void sendText(const String &msg)
     {
         ws.sendTXT(msg.c_str());
+    }
+
+    // Runs on the ws_client task only (it calls ws.*).
+    void drainOutbox()
+    {
+        OutMsg m;
+        while (xQueueReceive(outbox, &m, 0) == pdTRUE)
+            sendText(m.text);
     }
 
     // WiFi is up: load keys and start connecting. Keys are re-read every time,
@@ -59,11 +77,15 @@ private:
         }
         missingCredsLogged = false;
 
-        ws.begin(WS_HOST, WS_PORT, WS_PATH);
+        // TODO: switch to beginSslWithCA so we also check WHO answers, not just encrypt.
+        if (WS_USE_TLS)
+            ws.beginSSL(WS_HOST, WS_PORT, WS_PATH);
+        else
+            ws.begin(WS_HOST, WS_PORT, WS_PATH);
         ws.setReconnectInterval(RECONNECT_MS);
         ws.enableHeartbeat(15000, 3000, 2); // we also ping, so we notice a dead server
         started = true;
-        Serial.printf("WS: connecting to %s:%u%s\n", WS_HOST, WS_PORT, WS_PATH);
+        Serial.printf("WS: connecting to %s://%s:%u%s\n", WS_USE_TLS ? "wss" : "ws", WS_HOST, WS_PORT, WS_PATH);
     }
 
     void stop()
@@ -71,6 +93,7 @@ private:
         ws.disconnect();
         started = false;
         state = WsState::DISCONNECTED;
+        xQueueReset(outbox); // old replies are useless after a reconnect
         Serial.println("WS: WiFi lost, stopped");
     }
 
@@ -180,6 +203,7 @@ private:
             if (state != WsState::DISCONNECTED)
                 Serial.println("WS: disconnected");
             state = WsState::DISCONNECTED;
+            xQueueReset(outbox); // old replies are useless after a reconnect
             break;
 
         case WStype_TEXT:
@@ -205,7 +229,11 @@ private:
                 stop();
 
             if (started)
+            {
                 ws.loop();
+                if (state == WsState::ONLINE)
+                    drainOutbox();
+            }
 
             vTaskDelay(pdMS_TO_TICKS(started ? 10 : 500));
         }
@@ -220,11 +248,29 @@ public:
     void init(CommandRouter *router)
     {
         commandRouter = router;
+        outbox = xQueueCreate(OUTBOX_DEPTH, sizeof(OutMsg)); // before the task, so it never sees a null queue
         ws.onEvent([this](WStype_t type, uint8_t *payload, size_t length)
                    { onEvent(type, payload, length); });
 
-        // Own task, same core as wifi_mgr. 6 KB: TCP + HMAC need more stack than the default.
-        xTaskCreatePinnedToCore(taskTrampoline, "ws_client", 6144, this, 3, nullptr, 0);
+        // Own task, same core as wifi_mgr. 10 KB: the TLS handshake (mbedTLS) runs here and needs a deep stack.
+        xTaskCreatePinnedToCore(taskTrampoline, "ws_client", 10240, this, 3, nullptr, 0);
+    }
+
+    // Safe from any task. Never blocks. Returns false if the message was dropped.
+    bool enqueue(const char *msg)
+    {
+        if (outbox == nullptr)
+            return false;
+
+        OutMsg m;
+        snprintf(m.text, sizeof(m.text), "%s", msg); // always '\0'-terminated, cuts if too long
+
+        if (xQueueSend(outbox, &m, 0) != pdTRUE)
+        {
+            Serial.println("WS: outbox full, dropped"); // never log the payload
+            return false;
+        }
+        return true;
     }
 
     static WsState getState() { return state; }

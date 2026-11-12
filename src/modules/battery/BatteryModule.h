@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <atomic>
 #include "app/EventBus.h"
-#include "comms/ble/BleManager.h"
+#include "app/Responder.h"
 #include "comms/protocol/Commands.h"
 #include "drivers/BatteryDriver.h"
 
@@ -39,7 +39,6 @@ private:
 
     static inline BatteryDriver driver;
     static inline EventBus *eventBus = nullptr;
-    static inline BleManager *bleManager = nullptr;
 
     // Written by the battery task, read by other tasks.
     static inline std::atomic<int> lastMilliVolts{-1};
@@ -111,11 +110,10 @@ private:
 
 public:
     // Call after eventBus.init(): the first reading may publish right away.
-    static void init(uint8_t pin, EventBus *bus, BleManager *ble)
+    static void init(uint8_t pin, EventBus *bus)
     {
         driver.init(pin);
         eventBus = bus;
-        bleManager = ble;
         xTaskCreatePinnedToCore(taskLoop, "battery", 3072, nullptr, 2, nullptr, 1);
     }
 
@@ -124,10 +122,9 @@ public:
     // battery:read  ->  battery:read:<pct>:<mv>
     static void onCommand(const Command &cmd)
     {
-        if (strcmp(cmd.action, "read") == 0 && bleManager != nullptr) {
-            
-            bleManager->sendResponse("battery:read:" + String(lastPercent.load()) + ":" + String(lastMilliVolts.load()));
-
-        }
+        if (strcmp(cmd.action, "read") == 0)
+            Responder::reply(cmd, "battery:read:" + String(lastPercent.load()) + ":" + String(lastMilliVolts.load()));
+        else
+            Responder::reply(cmd, "error:unknown_action");
     }
 };

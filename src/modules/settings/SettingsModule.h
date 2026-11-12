@@ -1,14 +1,12 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
-#include <comms/protocol/Commands.h>
-#include <comms/ble/BleManager.h>
+#include "comms/protocol/Commands.h"
+#include "app/Responder.h"
 
 class SettingsModule
 {
 private:
-    static inline BleManager *bleManager = nullptr;
-
     static bool isAllowedKey(const char *key)
     {
         return strcmp(key, "device_id") == 0 ||
@@ -22,21 +20,11 @@ private:
         return strcmp(key, "wifi_password") == 0 || strcmp(key, "hmac_secret") == 0;
     }
 
-    static void reply(const String &msg)
-    {
-        if (bleManager != nullptr)
-            bleManager->sendResponse(msg);
-    }
-
 public:
-    static void init(BleManager *ble)
-    {
-        bleManager = ble;
-    }
-
     static void onCommand(const Command &cmd)
     {
         Preferences prefs;
+        auto reply = [&cmd](const String &msg) { Responder::reply(cmd, msg); };
 
         if (strcmp(cmd.action, "write") == 0)
         {
@@ -79,13 +67,15 @@ public:
         }
         else if (strcmp(cmd.action, "wifi_ready") == 0)
         {
-            if (bleManager != nullptr)
-                bleManager->sendResponse("settings:wifi_ready:" + String(wifiCredentialAvailable() ? "1" : "0"));
+            reply("settings:wifi_ready:" + String(wifiCredentialAvailable() ? "1" : "0"));
         }
         else if (strcmp(cmd.action, "setup_completed") == 0)
         {
-            if (bleManager != nullptr)
-                bleManager->sendResponse("settings:setup_completed:" + String(deviceSetupCompleted() ? "1" : "0"));
+            reply("settings:setup_completed:" + String(deviceSetupCompleted() ? "1" : "0"));
+        }
+        else
+        {
+            reply("error:unknown_action");
         }
     }
 

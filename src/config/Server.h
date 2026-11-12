@@ -2,7 +2,9 @@
 #include <cstdint>
 
 // Where the robot's WebSocket connects.
-// WS_HOST = your PC's LAN IP
-static constexpr const char *WS_HOST = "10.157.118.20";
-static constexpr uint16_t WS_PORT = 4000;
+// Render (production): host = bare domain, port 443, TLS on.
+// Laptop (local test): host = your PC's LAN IP, port 4000, TLS off.
+static constexpr const char *WS_HOST = "y-bot-admin-panel.onrender.com";
+static constexpr uint16_t WS_PORT = 443;
 static constexpr const char *WS_PATH = "/device";
+static constexpr bool WS_USE_TLS = true;

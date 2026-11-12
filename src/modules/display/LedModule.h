@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <app/EventBus.h>
 #include <comms/protocol/Commands.h>
+#include "app/Responder.h"
 
 class LedModule
 {
@@ -47,5 +48,7 @@ public:
             setState(true);
         else if (strcmp(cmd.action, "off") == 0)
             setState(false);
+        else
+            Responder::reply(cmd, "error:unknown_action");
     }
 };

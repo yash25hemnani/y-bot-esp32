@@ -1,8 +1,7 @@
 #pragma once
 #include <WiFi.h>
-#include <WebServer.h>
 #include <atomic>
-#include "app/CommandRouter.h"
+#include "app/Responder.h"
 #include "comms/protocol/Commands.h"
 #include "modules/settings/SettingsModule.h"
 #include "comms/ble/BleManager.h"
@@ -19,8 +18,6 @@ enum class WifiState : uint8_t
 class WifiManager
 {
 private:
-    WebServer server{80};
-    CommandRouter *commandRouter;
     String ssid;
     String password;
     bool credentialsAvailable = false;
@@ -133,24 +130,6 @@ private:
         Serial.printf("Connecting to WiFi: %s\n", ssid.c_str());
     }
 
-    void handleCommand()
-    {
-        String moduleArg = server.arg("module");
-        String actionArg = server.arg("action");
-        String keyArg = server.arg("key");
-        String valueArg = server.arg("value");
-
-        Command cmd{};
-        strncpy(cmd.module, moduleArg.c_str(), sizeof(cmd.module) - 1);
-        strncpy(cmd.action, actionArg.c_str(), sizeof(cmd.action) - 1);
-        strncpy(cmd.key, keyArg.c_str(), sizeof(cmd.key) - 1);
-        strncpy(cmd.value, valueArg.c_str(), sizeof(cmd.value) - 1);
-
-        commandRouter->submit(cmd);
-
-        server.send(200, "text/plain", "queued: " + moduleArg + "/" + actionArg);
-    }
-
     void taskLoop()
     {
         for (;;)
@@ -174,7 +153,6 @@ private:
                 }
             }
 
-            server.handleClient();
             vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
@@ -185,18 +163,13 @@ private:
     }
 
 public:
-    void init(CommandRouter *router, BleManager *ble)
+    void init(BleManager *ble)
     {
-        commandRouter = router;
         bleManager = ble;
 
         WiFi.onEvent(onWifiEvent); // before WiFi.mode, so we don't miss early events
         WiFi.mode(WIFI_STA); // must come before reloadCredentials()
         reloadCredentials();
-
-        server.on("/cmd", HTTP_POST, [this]()
-                  { handleCommand(); });
-        server.begin();
 
         // WifiManager gets its own task so connecting/reconnecting never blocks setup() or anything else
         xTaskCreatePinnedToCore(taskTrampoline, "wifi_mgr", 4096, this, 4, nullptr, 0);
@@ -209,5 +182,7 @@ public:
             reloadRequested = true;
         else if (strcmp(cmd.action, "status") == 0)
             statusPending = true; // always reply, even if nothing changed
+        else
+            Responder::reply(cmd, "error:unknown_action");
     }
 };

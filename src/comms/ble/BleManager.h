@@ -29,7 +29,9 @@ private:
 
     public:
         ServerCallback(BleManager *mgr) : manager(mgr) {}
+
         void onConnect(BLEServer *server) override { manager->clientConnected = true; }
+        
         void onDisconnect(BLEServer *server) override
         {
             manager->clientConnected = false;

@@ -13,6 +13,7 @@
 #include "comms/wifi/WifiManager.h"
 #include "comms/ble/BleManager.h"
 #include "comms/ws/WsClient.h"
+#include "app/Responder.h"
 
 EventBus eventBus;
 CommandRouter commandRouter;
@@ -54,15 +55,15 @@ void setup()
   commandRouter.registerHandler("motor", MotorModule::onCommand);
   commandRouter.registerHandler("wifi", WifiManager::onCommand);
   
-  wifiManager.init(&commandRouter, &bleManager);
+  wifiManager.init(&bleManager);
   wsClient.init(&commandRouter); // connects once WiFi is up
   bleManager.init("Y-Bot", &commandRouter);
-  SettingsModule::init(&bleManager);
+  Responder::init(&bleManager, &wsClient); // before any module that replies
 
   commandRouter.registerHandler("battery", BatteryModule::onCommand);
-  BatteryModule::init(BATTERY_PIN, &eventBus, &bleManager);
+  BatteryModule::init(BATTERY_PIN, &eventBus);
 
-  Serial.println("Ready. Press BOOT or send /cmd?module=led&action=toggle");
+  Serial.println("Ready.");
 }
 
 void loop()

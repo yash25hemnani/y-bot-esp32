@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "comms/protocol/Commands.h"
+#include "app/Responder.h"
 
 using CommandHandler = void (*)(const Command &);
 
@@ -24,17 +25,22 @@ private:
         Command cmd;
         for (;;)
         {
-            if (xQueueReceive(cmdQueue, &cmd, portMAX_DELAY) == pdTRUE)
+            if (xQueueReceive(cmdQueue, &cmd, portMAX_DELAY) != pdTRUE)
+                continue;
+
+            bool handled = false;
+            for (int i = 0; i < handlerCount; i++)
             {
-                for (int i = 0; i < handlerCount; i++)
+                if (strcmp(handlers[i].module, cmd.module) == 0)
                 {
-                    if (strcmp(handlers[i].module, cmd.module) == 0)
-                    {
-                        handlers[i].handlerFn(cmd);
-                        break;
-                    }
+                    handlers[i].handlerFn(cmd);
+                    handled = true;
+                    break;
                 }
             }
+
+            if (!handled)
+                Responder::reply(cmd, "error:unknown_module");
         }
     }
 
@@ -52,13 +58,16 @@ public:
 
     void registerHandler(const char *moduleName, CommandHandler handler)
     {
-        if (handlerCount < MAX_HANDLERS)
+        if (handlerCount >= MAX_HANDLERS)
         {
-            strncpy(handlers[handlerCount].module, moduleName, sizeof(handlers[handlerCount].module));
-
-            handlers[handlerCount].handlerFn = handler;
-            handlerCount++;
+            Serial.printf("CommandRouter: no room for '%s'\n", moduleName);
+            return;
         }
+
+        // snprintf always ends with '\0'; strncpy doesn't when the name fills the buffer.
+        snprintf(handlers[handlerCount].module, sizeof(handlers[handlerCount].module), "%s", moduleName);
+        handlers[handlerCount].handlerFn = handler;
+        handlerCount++;
     }
 
     // Called from WiFi/BLE Task

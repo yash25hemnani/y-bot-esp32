@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <comms/protocol/Commands.h>
+#include "app/Responder.h"
 #include <config/Pins.h>
 #include <drivers/MotorDriver.h>
 
@@ -80,5 +81,7 @@ public:
             turnRight(speed);
         else if (strcmp(cmd.action, "brake") == 0)
             brake();
+        else
+            Responder::reply(cmd, "error:unknown_action");
     }
 };
