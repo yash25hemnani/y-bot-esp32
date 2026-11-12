@@ -77,6 +77,9 @@ private:
         }
         missingCredsLogged = false;
 
+        // TLS needs ~45 KB free and one block of ~17 KB; this tells us if we have it.
+        Serial.printf("WS: heap free %u, largest block %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+
         // TODO: switch to beginSslWithCA so we also check WHO answers, not just encrypt.
         if (WS_USE_TLS)
             ws.beginSSL(WS_HOST, WS_PORT, WS_PATH);

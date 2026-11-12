@@ -1,9 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h> // NimBLE: BLE-only stack, ~50 KB less heap than Bluedroid (TLS needs it)
 #include "app/CommandRouter.h"
 #include "comms/protocol/Commands.h"
 #include "comms/protocol/CommandParser.h"
@@ -15,14 +12,14 @@
 class BleManager
 {
 private:
-    BLECharacteristic *rxCharacteristic;
-    BLECharacteristic *txCharacteristic;
+    NimBLECharacteristic *rxCharacteristic = nullptr;
+    NimBLECharacteristic *txCharacteristic = nullptr;
     CommandRouter *commandRouter;
 
     bool clientConnected = false;
     SemaphoreHandle_t txMutex = nullptr;
 
-    class ServerCallback : public BLEServerCallbacks
+    class ServerCallback : public NimBLEServerCallbacks
     {
     private:
         BleManager *manager;
@@ -30,9 +27,9 @@ private:
     public:
         ServerCallback(BleManager *mgr) : manager(mgr) {}
 
-        void onConnect(BLEServer *server) override { manager->clientConnected = true; }
-        
-        void onDisconnect(BLEServer *server) override
+        void onConnect(NimBLEServer *server) override { manager->clientConnected = true; }
+
+        void onDisconnect(NimBLEServer *server) override
         {
             manager->clientConnected = false;
             server->getAdvertising()->start(); // resume advertising after disconnect
@@ -61,7 +58,7 @@ private:
         Serial.printf("BLE queued: %s/%s/%s\n", cmd.module, cmd.action, cmd.key); // never log value
     }
 
-    class WriteCallback : public BLECharacteristicCallbacks
+    class WriteCallback : public NimBLECharacteristicCallbacks
     {
     private:
         BleManager *manager;
@@ -69,7 +66,7 @@ private:
     public:
         WriteCallback(BleManager *mgr) : manager(mgr) {}
 
-        void onWrite(BLECharacteristic *chr) override
+        void onWrite(NimBLECharacteristic *chr) override
         {
             String value = chr->getValue().c_str();
             manager->handleWrite(value);
@@ -82,22 +79,22 @@ public:
         txMutex = xSemaphoreCreateMutex();
         commandRouter = router;
 
-        BLEDevice::init(deviceName);
-        BLEServer *server = BLEDevice::createServer();
+        NimBLEDevice::init(deviceName);
+        NimBLEServer *server = NimBLEDevice::createServer();
         server->setCallbacks(new ServerCallback(this));
-        BLEService *service = server->createService(SERVICE_UUID);
+        NimBLEService *service = server->createService(SERVICE_UUID);
 
         rxCharacteristic = service->createCharacteristic(
-            CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+            CHARACTERISTIC_UUID_RX, NIMBLE_PROPERTY::WRITE);
         rxCharacteristic->setCallbacks(new WriteCallback(this));
 
+        // NimBLE adds the 2902 (subscribe) descriptor by itself for NOTIFY.
         txCharacteristic = service->createCharacteristic(
-            CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
-        txCharacteristic->addDescriptor(new BLE2902()); // required for notify subscriptions
+            CHARACTERISTIC_UUID_TX, NIMBLE_PROPERTY::NOTIFY);
 
         service->start();
 
-        BLEAdvertising *advertising = BLEDevice::getAdvertising();
+        NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
         advertising->addServiceUUID(SERVICE_UUID);
         advertising->start();
 
