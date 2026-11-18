@@ -27,12 +27,29 @@ private:
     public:
         ServerCallback(BleManager *mgr) : manager(mgr) {}
 
-        void onConnect(NimBLEServer *server) override { manager->clientConnected = true; }
+        void onConnect(NimBLEServer *server) override
+        {
+            manager->clientConnected = true;
+            // Free heap matters: TLS + NimBLE together can run the ESP32 short.
+            Serial.printf("[BLE] client connected, free heap: %u\n", ESP.getFreeHeap());
+        }
 
         void onDisconnect(NimBLEServer *server) override
         {
             manager->clientConnected = false;
+            Serial.println("[BLE] client disconnected, advertising again");
             server->getAdvertising()->start(); // resume advertising after disconnect
+        }
+    };
+
+    // Only for logging: shows whether the app turned on notifications for TX.
+    // If this never prints "subscribed", every reply is sent to nobody.
+    class TxCallback : public NimBLECharacteristicCallbacks
+    {
+    public:
+        void onSubscribe(NimBLECharacteristic *chr, ble_gap_conn_desc *desc, uint16_t subValue) override
+        {
+            Serial.printf("[BLE] TX notify %s (value %u)\n", subValue ? "subscribed" : "unsubscribed", subValue);
         }
     };
 
@@ -43,6 +60,7 @@ private:
         ParseResult r = CommandParser::parse(input, cmd);
         if (r != ParseResult::OK)
         {
+            Serial.printf("[BLE] parse failed: %s\n", CommandParser::errorText(r));
             sendResponse(CommandParser::errorText(r));
             return;
         }
@@ -50,6 +68,7 @@ private:
         cmd.source = CommandSource::BLE;
         if (!commandRouter->submit(cmd))
         {
+            Serial.println("[BLE] router queue full, replying error:busy");
             sendResponse("error:busy");
             return;
         }
@@ -69,6 +88,8 @@ private:
         void onWrite(NimBLECharacteristic *chr) override
         {
             String value = chr->getValue().c_str();
+            // Log only the length: a write can carry wifi_password or hmac_secret.
+            Serial.printf("[BLE] write received, %u bytes\n", value.length());
             manager->handleWrite(value);
         }
     };
@@ -91,6 +112,7 @@ public:
         // NimBLE adds the 2902 (subscribe) descriptor by itself for NOTIFY.
         txCharacteristic = service->createCharacteristic(
             CHARACTERISTIC_UUID_TX, NIMBLE_PROPERTY::NOTIFY);
+        txCharacteristic->setCallbacks(new TxCallback());
 
         service->start();
 
@@ -105,11 +127,18 @@ public:
     void sendResponse(const String &payload)
     {
         if (!clientConnected || txCharacteristic == nullptr || txMutex == nullptr)
+        {
+            Serial.printf("[BLE] reply dropped (no client): %s\n", payload.c_str());
             return;
+        }
 
         xSemaphoreTake(txMutex, portMAX_DELAY);
-        txCharacteristic->setValue(payload.c_str());
+        // Pass bytes + length: setValue(const char*) on a characteristic hits NimBLE's
+        // generic template and sends the 4-byte pointer address instead of the text.
+        txCharacteristic->setValue((const uint8_t *)payload.c_str(), payload.length());
         txCharacteristic->notify();
         xSemaphoreGive(txMutex);
+        // Safe to print: secret keys are write-only, so they never appear in a reply.
+        Serial.printf("[BLE] notify sent: %s\n", payload.c_str());
     }
 };

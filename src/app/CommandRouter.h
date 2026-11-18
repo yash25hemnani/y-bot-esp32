@@ -28,6 +28,8 @@ private:
             if (xQueueReceive(cmdQueue, &cmd, portMAX_DELAY) != pdTRUE)
                 continue;
 
+            Serial.printf("[Router] dispatch %s/%s/%s\n", cmd.module, cmd.action, cmd.key); // never log value
+
             bool handled = false;
             for (int i = 0; i < handlerCount; i++)
             {
@@ -40,7 +42,10 @@ private:
             }
 
             if (!handled)
+            {
+                Serial.printf("[Router] no handler for module '%s'\n", cmd.module);
                 Responder::reply(cmd, "error:unknown_module");
+            }
         }
     }
 
