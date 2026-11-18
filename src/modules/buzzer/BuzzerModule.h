@@ -131,7 +131,7 @@ private:
 
 public:
     static void init() {
-        driver.init(BUZZER_PIN, CHANNEL, true); // MH-FMD is active LOW
+        driver.init(BUZZER_PIN, CHANNEL, false); // silent = LOW, driven with tone()
         queue = xQueueCreate(4, sizeof(Sound));
         xTaskCreatePinnedToCore(taskLoop, "buzzer", 2048, nullptr, 2, nullptr, 1);
     }
