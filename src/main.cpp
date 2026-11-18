@@ -14,6 +14,7 @@
 #include "comms/ble/BleManager.h"
 #include "comms/ws/WsClient.h"
 #include "app/Responder.h"
+#include "modules/buzzer/BuzzerModule.h"
 
 EventBus eventBus;
 CommandRouter commandRouter;
@@ -32,6 +33,7 @@ void setup()
 
   LedModule::init(LED_PIN);
   MotorModule::init();
+  BuzzerModule::init();
 
   Wire.begin(SDA_PIN, SCK_PIN);
   DisplayModule::init();
@@ -41,6 +43,7 @@ void setup()
   eventBus.subscribe(LedModule::onEvent);
   eventBus.subscribe(TouchSensorModule::onEvent);
   eventBus.subscribe(DisplayModule::onEvent);
+  eventBus.subscribe(BuzzerModule::onEvent);
   eventBus.init();
 
   menuButton.init(MENU_BUTTON_PIN, &eventBus, EventType::MENU_PRESSED, true, EventType::MENU_LONG_PRESSED);
@@ -54,7 +57,7 @@ void setup()
   commandRouter.registerHandler("settings", SettingsModule::onCommand);
   commandRouter.registerHandler("motor", MotorModule::onCommand);
   commandRouter.registerHandler("wifi", WifiManager::onCommand);
-  
+
   wifiManager.init(&bleManager);
   wsClient.init(&commandRouter); // connects once WiFi is up
   bleManager.init("Y-Bot", &commandRouter);
@@ -63,6 +66,9 @@ void setup()
   commandRouter.registerHandler("battery", BatteryModule::onCommand);
   BatteryModule::init(BATTERY_PIN, &eventBus);
 
+  commandRouter.registerHandler("buzzer", BuzzerModule::onCommand);
+
+  BuzzerModule::request(Sound::BOOT);
   Serial.println("Ready.");
 }
 
